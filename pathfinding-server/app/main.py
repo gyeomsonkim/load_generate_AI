@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 
 from app.config import settings
-from app.api.routes import maps
+from app.api.routes import maps, pathfinding
 from app.models.database import Base
 from app.api.dependencies import engine
 
@@ -73,6 +73,7 @@ if settings.storage_type == "local":
 
 # API 라우터 등록
 app.include_router(maps.router, prefix=settings.api_prefix)
+app.include_router(pathfinding.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

@@ -1,9 +1,9 @@
 .env
+.claude/
 venv/
 storage/
 ml_models/
 venv_py311/
-postman-collection.json
 project_structure.md
 README.md
 setup.py
