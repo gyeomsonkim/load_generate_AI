@@ -1,0 +1,42 @@
+# Python 3.11/3.12 호환 버전
+# Core dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+python-dotenv==1.0.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+
+# Redis for caching
+redis==5.0.1
+
+# Image processing - 최신 버전으로 업데이트
+opencv-python==4.8.1.78
+Pillow==10.2.0  # 최신 안정 버전
+numpy==1.26.2  # Python 3.12 호환
+scikit-image==0.22.0
+
+# ML/DL - CPU 버전으로 시작
+torch==2.1.1
+torchvision==0.16.1
+scipy==1.11.4
+
+# Storage
+aiofiles==23.2.1
+
+# Utilities
+pydantic==2.5.2
+pydantic-settings==2.1.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+
+# Development
+black==23.11.0
+flake8==6.1.0
