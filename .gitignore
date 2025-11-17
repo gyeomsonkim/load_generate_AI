@@ -1,6 +1,8 @@
 .env
 .claude/
+myenv/
 venv/
+venv_py311/
 storage/
 ml_models/
 venv_py311/

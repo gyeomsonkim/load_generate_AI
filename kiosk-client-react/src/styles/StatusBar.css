@@ -1,0 +1,42 @@
+/* Status Bar Styles */
+
+.status-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 1000;
+  font-size: 18px;
+}
+
+.instruction {
+  flex: 1;
+  font-weight: 500;
+}
+
+.reset-btn {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.2s;
+}
+
+.reset-btn:hover {
+  background: #dc2626;
+}
+
+.reset-btn:active {
+  background: #b91c1c;
+}
