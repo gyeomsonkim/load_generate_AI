@@ -1,6 +1,6 @@
 """
 파일 스토리지 서비스
-로컬 파일 시스템 또는 MinIO를 사용한 이미지 저장
+로컬 파일 시스템, MinIO 또는 AWS S3를 사용한 이미지 저장
 """
 import os
 import shutil
@@ -12,6 +12,8 @@ import aiofiles
 import uuid
 from minio import Minio
 from minio.error import S3Error
+import boto3
+from botocore.exceptions import ClientError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,24 @@ class StorageService:
             )
             self.bucket = self.config.get("minio_bucket", "pathfinding-maps")
             self._ensure_bucket_exists()
+        elif storage_type == "s3":
+            # S3 클라이언트 초기화
+            self.s3_client = boto3.client(
+                's3',
+                aws_access_key_id=self.config.get("aws_access_key_id"),
+                aws_secret_access_key=self.config.get("aws_secret_access_key"),
+                region_name=self.config.get("aws_region", "ap-northeast-2")
+            )
+            self.bucket = self.config.get("aws_s3_bucket")
+            self.region = self.config.get("aws_region", "ap-northeast-2")
+
+            # S3 모드에서도 로컬 임시 디렉토리 필요 (썸네일, 메타데이터 추출용)
+            self.base_path = Path(self.config.get("storage_path", "./storage"))
+            self.base_path.mkdir(parents=True, exist_ok=True)
+            self.uploads_path = self.base_path / "temp"
+            self.uploads_path.mkdir(exist_ok=True)
+
+            logger.info(f"AWS S3 initialized: bucket={self.bucket}, region={self.region}")
 
     def _ensure_bucket_exists(self):
         """MinIO 버킷 존재 확인 및 생성"""
@@ -79,7 +99,7 @@ class StorageService:
 
             return str(file_path), metadata
 
-        else:  # MinIO
+        elif self.storage_type == "minio":  # MinIO
             object_name = f"uploads/{file_id}{extension}"
 
             # MinIO에 업로드
@@ -89,6 +109,28 @@ class StorageService:
                 object_name,
                 BytesIO(file_content),
                 len(file_content)
+            )
+
+            # 메타데이터 추출 (임시 파일 사용)
+            temp_path = f"/tmp/{file_id}{extension}"
+            with open(temp_path, 'wb') as f:
+                f.write(file_content)
+
+            metadata = self._extract_image_metadata(temp_path)
+            os.remove(temp_path)
+
+            return object_name, metadata
+
+        else:  # AWS S3
+            object_name = f"uploads/{file_id}{extension}"
+
+            # S3에 업로드
+            from io import BytesIO
+            self.s3_client.put_object(
+                Bucket=self.bucket,
+                Key=object_name,
+                Body=BytesIO(file_content),
+                ContentType=f"image/{extension[1:]}" if extension else "application/octet-stream"
             )
 
             # 메타데이터 추출 (임시 파일 사용)
@@ -139,6 +181,17 @@ class StorageService:
 
         try:
             with Image.open(image_path) as img:
+                # RGBA를 RGB로 변환 (JPEG는 투명도 지원 안함)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    # 흰색 배경 생성
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                    img = background
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+
                 img.thumbnail(size, Image.Resampling.LANCZOS)
                 img.save(thumbnail_path, "JPEG", quality=85)
 
@@ -172,7 +225,7 @@ class StorageService:
 
             return str(file_path)
 
-        else:  # MinIO
+        elif self.storage_type == "minio":  # MinIO
             object_name = f"processed/{map_id}/{data_type}.png"
 
             from io import BytesIO
@@ -185,22 +238,40 @@ class StorageService:
 
             return object_name
 
+        else:  # AWS S3
+            object_name = f"processed/{map_id}/{data_type}.png"
+
+            from io import BytesIO
+            self.s3_client.put_object(
+                Bucket=self.bucket,
+                Key=object_name,
+                Body=BytesIO(data),
+                ContentType="image/png"
+            )
+
+            return object_name
+
     async def get_file(self, file_path: str) -> bytes:
         """파일 읽기"""
         if self.storage_type == "local":
             async with aiofiles.open(file_path, 'rb') as f:
                 return await f.read()
-        else:  # MinIO
+        elif self.storage_type == "minio":  # MinIO
             response = self.client.get_object(self.bucket, file_path)
             return response.read()
+        else:  # AWS S3
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=file_path)
+            return response['Body'].read()
 
     async def delete_file(self, file_path: str) -> bool:
         """파일 삭제"""
         try:
             if self.storage_type == "local":
                 os.remove(file_path)
-            else:  # MinIO
+            elif self.storage_type == "minio":  # MinIO
                 self.client.remove_object(self.bucket, file_path)
+            else:  # AWS S3
+                self.s3_client.delete_object(Bucket=self.bucket, Key=file_path)
             return True
         except Exception as e:
             logger.error(f"파일 삭제 실패: {e}")
@@ -211,7 +282,7 @@ class StorageService:
         if self.storage_type == "local":
             # 로컬의 경우 상대 경로 반환
             return f"/files/{Path(file_path).relative_to(self.base_path)}"
-        else:  # MinIO
+        elif self.storage_type == "minio":  # MinIO
             # 사전 서명된 URL 생성 (1시간 유효)
             from datetime import timedelta
             return self.client.presigned_get_object(
@@ -219,3 +290,19 @@ class StorageService:
                 file_path,
                 expires=timedelta(hours=1)
             )
+        else:  # AWS S3
+            # Pre-signed URL 생성 (1시간 유효)
+            try:
+                presigned_url = self.s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={
+                        'Bucket': self.bucket,
+                        'Key': file_path
+                    },
+                    ExpiresIn=3600  # 1시간
+                )
+                return presigned_url
+            except Exception as e:
+                logger.error(f"Failed to generate presigned URL: {e}")
+                # Fallback to public URL format
+                return f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{file_path}"

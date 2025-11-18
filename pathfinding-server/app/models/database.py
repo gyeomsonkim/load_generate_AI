@@ -109,3 +109,52 @@ class PathfindingRequest(Base):
 
     # 관계
     map = relationship("Map", back_populates="pathfinding_requests")
+
+
+class ApiKey(Base):
+    """API 키 관리 테이블"""
+    __tablename__ = "api_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(6), unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    usage_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+
+    # 관계
+    api_usage = relationship("ApiUsage", back_populates="api_key", cascade="all, delete-orphan")
+    user_images = relationship("UserImage", back_populates="api_key", cascade="all, delete-orphan")
+
+
+class ApiUsage(Base):
+    """API 사용량 추적 테이블"""
+    __tablename__ = "api_usage"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    api_key_id = Column(Integer, ForeignKey("api_keys.id", ondelete="CASCADE"), nullable=False, index=True)
+    endpoint = Column(String(255), nullable=False, index=True)
+    method = Column(String(10), nullable=False)
+    status_code = Column(Integer, nullable=False)
+    response_time_ms = Column(Float, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    request_data = Column(JSON, nullable=True)
+    user_agent = Column(String(255), nullable=True)
+
+    # 관계
+    api_key = relationship("ApiKey", back_populates="api_usage")
+
+
+class UserImage(Base):
+    """사용자 업로드 이미지 관리 테이블"""
+    __tablename__ = "user_images"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    api_key_id = Column(Integer, ForeignKey("api_keys.id", ondelete="CASCADE"), nullable=False, index=True)
+    map_id = Column(String, ForeignKey("maps.id", ondelete="CASCADE"), nullable=False, index=True)
+    upload_timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+
+    # 관계
+    api_key = relationship("ApiKey", back_populates="user_images")
+    map = relationship("Map")

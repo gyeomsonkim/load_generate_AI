@@ -8,6 +8,8 @@ import type {
   PathfindingRequest,
   PathfindingResponse,
   NormalizedCoordinate,
+  ValidatePointRequest,
+  ValidatePointResponse,
 } from '../types';
 import { API, config } from '../config';
 
@@ -102,6 +104,49 @@ class ApiService {
       return result;
     } catch (error) {
       console.error('Failed to find route:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Validate and adjust a coordinate point
+   */
+  async validatePoint(
+    mapId: string,
+    point: NormalizedCoordinate
+  ): Promise<ValidatePointResponse> {
+    try {
+      if (config.debug) {
+        console.log('Validating point:', { mapId, point });
+      }
+
+      const requestBody: ValidatePointRequest = {
+        map_id: mapId,
+        point,
+      };
+
+      const response = await fetch(API.pathfinding.validatePoint(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (config.debug) {
+        console.log('Point validation result:', result);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Failed to validate point:', error);
       throw error;
     }
   }

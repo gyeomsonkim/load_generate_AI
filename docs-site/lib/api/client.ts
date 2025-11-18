@@ -120,6 +120,44 @@ export class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // 인증 API
+  async verifyApiKey(key: string) {
+    return this.fetch('/api/v1/auth/verify', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: key }),
+    });
+  }
+
+  // Dashboard API
+  async getDashboardStats() {
+    return this.fetch('/api/v1/dashboard/stats');
+  }
+
+  async getDashboardImages() {
+    return this.fetch('/api/v1/dashboard/images');
+  }
+
+  async getApiUsage(period: 'day' | 'week' | 'month' = 'week') {
+    return this.fetch(`/api/v1/dashboard/usage?period=${period}`);
+  }
+
+  async getApiKeys() {
+    return this.fetch('/api/v1/dashboard/api-keys');
+  }
+
+  async createApiKey(name?: string) {
+    return this.fetch('/api/v1/dashboard/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async deleteApiKey(keyId: number) {
+    return this.fetch(`/api/v1/dashboard/api-keys/${keyId}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 // 싱글톤 인스턴스

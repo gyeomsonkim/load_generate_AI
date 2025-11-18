@@ -36,11 +36,11 @@ export const MapView: React.FC<MapViewProps> = ({
   const imageOverlayRef = useRef<L.ImageOverlay | null>(null);
   const startMarkerRef = useRef<L.Marker | null>(null);
   const endMarkerRef = useRef<L.Marker | null>(null);
+  const startOriginalMarkerRef = useRef<L.CircleMarker | null>(null);
+  const endOriginalMarkerRef = useRef<L.CircleMarker | null>(null);
+  const startAdjustmentLineRef = useRef<L.Polyline | null>(null);
+  const endAdjustmentLineRef = useRef<L.Polyline | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
-
-  useEffect(() => {
-    console.log('mapData---------', mapData);
-  }, [mapData]);
 
   // Calculate map bounds based on image dimensions
   const bounds = useMemo(
@@ -66,8 +66,8 @@ export const MapView: React.FC<MapViewProps> = ({
       keyboard: false,
     });
 
-    // Load image overlay
-    const imageUrl = mapData.processed_image_url || mapData.original_image_url;
+    // Load image overlay - use original image for user display
+    const imageUrl = mapData.original_image_url || mapData.processed_image_url;
     if (imageUrl) {
       const overlay = L.imageOverlay(imageUrl, [bounds.min, bounds.max]);
       overlay.addTo(map);
@@ -104,27 +104,63 @@ export const MapView: React.FC<MapViewProps> = ({
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    // Remove old marker
+    // Remove old markers and lines
     if (startMarkerRef.current) {
       map.removeLayer(startMarkerRef.current);
       startMarkerRef.current = null;
     }
+    if (startOriginalMarkerRef.current) {
+      map.removeLayer(startOriginalMarkerRef.current);
+      startOriginalMarkerRef.current = null;
+    }
+    if (startAdjustmentLineRef.current) {
+      map.removeLayer(startAdjustmentLineRef.current);
+      startAdjustmentLineRef.current = null;
+    }
 
     // Add new marker
     if (startMarker) {
+      const actualPosition = startMarker.adjustedPosition || startMarker.position;
+
       const icon = L.divIcon({
-        html: `<div class="custom-marker marker-start"></div>`,
+        html: `<div class="custom-marker marker-start${startMarker.wasAdjusted ? ' marker-adjusted' : ''}"></div>`,
         className: '',
         iconSize: [30, 30],
         iconAnchor: [15, 15],
       });
 
-      const marker = L.marker(startMarker.position, { icon });
+      const marker = L.marker(actualPosition, { icon });
       marker.addTo(map);
       startMarkerRef.current = marker;
 
+      // If coordinate was adjusted, show original click location
+      if (startMarker.wasAdjusted && startMarker.position) {
+        // Original click position (semi-transparent circle)
+        const originalMarker = L.circleMarker(startMarker.position, {
+          radius: 8,
+          fillColor: '#4CAF50',
+          fillOpacity: 0.3,
+          color: '#4CAF50',
+          weight: 2,
+          opacity: 0.5,
+          dashArray: '5, 5',
+        });
+        originalMarker.addTo(map);
+        startOriginalMarkerRef.current = originalMarker;
+
+        // Line connecting original to adjusted
+        const line = L.polyline([startMarker.position, actualPosition], {
+          color: '#4CAF50',
+          weight: 2,
+          opacity: 0.5,
+          dashArray: '5, 5',
+        });
+        line.addTo(map);
+        startAdjustmentLineRef.current = line;
+      }
+
       if (config.debug) {
-        console.log('Start marker added:', startMarker.position);
+        console.log('Start marker added:', actualPosition, startMarker.wasAdjusted ? '(adjusted)' : '');
       }
     }
   }, [startMarker]);
@@ -134,27 +170,63 @@ export const MapView: React.FC<MapViewProps> = ({
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    // Remove old marker
+    // Remove old markers and lines
     if (endMarkerRef.current) {
       map.removeLayer(endMarkerRef.current);
       endMarkerRef.current = null;
     }
+    if (endOriginalMarkerRef.current) {
+      map.removeLayer(endOriginalMarkerRef.current);
+      endOriginalMarkerRef.current = null;
+    }
+    if (endAdjustmentLineRef.current) {
+      map.removeLayer(endAdjustmentLineRef.current);
+      endAdjustmentLineRef.current = null;
+    }
 
     // Add new marker
     if (endMarker) {
+      const actualPosition = endMarker.adjustedPosition || endMarker.position;
+
       const icon = L.divIcon({
-        html: `<div class="custom-marker marker-end"></div>`,
+        html: `<div class="custom-marker marker-end${endMarker.wasAdjusted ? ' marker-adjusted' : ''}"></div>`,
         className: '',
         iconSize: [30, 30],
         iconAnchor: [15, 15],
       });
 
-      const marker = L.marker(endMarker.position, { icon });
+      const marker = L.marker(actualPosition, { icon });
       marker.addTo(map);
       endMarkerRef.current = marker;
 
+      // If coordinate was adjusted, show original click location
+      if (endMarker.wasAdjusted && endMarker.position) {
+        // Original click position (semi-transparent circle)
+        const originalMarker = L.circleMarker(endMarker.position, {
+          radius: 8,
+          fillColor: '#F44336',
+          fillOpacity: 0.3,
+          color: '#F44336',
+          weight: 2,
+          opacity: 0.5,
+          dashArray: '5, 5',
+        });
+        originalMarker.addTo(map);
+        endOriginalMarkerRef.current = originalMarker;
+
+        // Line connecting original to adjusted
+        const line = L.polyline([endMarker.position, actualPosition], {
+          color: '#F44336',
+          weight: 2,
+          opacity: 0.5,
+          dashArray: '5, 5',
+        });
+        line.addTo(map);
+        endAdjustmentLineRef.current = line;
+      }
+
       if (config.debug) {
-        console.log('End marker added:', endMarker.position);
+        console.log('End marker added:', actualPosition, endMarker.wasAdjusted ? '(adjusted)' : '');
       }
     }
   }, [endMarker]);

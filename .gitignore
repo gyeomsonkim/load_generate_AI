@@ -2,13 +2,15 @@
 .claude/
 myenv/
 venv/
+ml-inference-server
 venv_py311/
 storage/
 ml_models/
 venv_py311/
 project_structure.md
-README.md
 setup.py
 __pycache__/
 docker/
 tests/
+pathfinding-server/datasets/
+datasets/

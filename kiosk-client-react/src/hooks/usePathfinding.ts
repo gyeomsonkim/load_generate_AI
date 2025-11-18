@@ -11,7 +11,7 @@ interface UsePathfindingReturn {
   route: PathfindingResponse | null;
   isProcessing: boolean;
   error: string | null;
-  findRoute: (mapId: string, start: NormalizedCoordinate, end: NormalizedCoordinate) => Promise<void>;
+  findRoute: (mapId: string, start: NormalizedCoordinate, end: NormalizedCoordinate) => Promise<PathfindingResponse>;
   clearRoute: () => void;
 }
 
@@ -21,10 +21,10 @@ export function usePathfinding(): UsePathfindingReturn {
   const [error, setError] = useState<string | null>(null);
 
   const findRoute = useCallback(
-    async (mapId: string, start: NormalizedCoordinate, end: NormalizedCoordinate) => {
+    async (mapId: string, start: NormalizedCoordinate, end: NormalizedCoordinate): Promise<PathfindingResponse> => {
       if (isProcessing) {
         if (config.debug) console.log('Already processing, ignoring request');
-        return;
+        throw new Error('Already processing');
       }
 
       setIsProcessing(true);
@@ -37,6 +37,8 @@ export function usePathfinding(): UsePathfindingReturn {
         if (config.debug) {
           console.log('Route set:', result);
         }
+
+        return result;
       } catch (err) {
         const message = err instanceof Error ? err.message : '경로를 찾을 수 없습니다';
         setError(message);

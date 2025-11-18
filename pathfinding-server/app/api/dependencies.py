@@ -30,16 +30,31 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """비동기 세션 생성 (미들웨어용)"""
+    async with async_session() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
 def get_storage_service() -> StorageService:
     """스토리지 서비스 의존성"""
     return StorageService(
         storage_type=settings.storage_type,
         config={
             "storage_path": settings.storage_path,
+            # MinIO
             "minio_endpoint": settings.minio_endpoint,
             "minio_access_key": settings.minio_access_key,
             "minio_secret_key": settings.minio_secret_key,
             "minio_bucket": settings.minio_bucket,
-            "minio_secure": settings.minio_secure
+            "minio_secure": settings.minio_secure,
+            # AWS S3
+            "aws_access_key_id": settings.aws_access_key_id,
+            "aws_secret_access_key": settings.aws_secret_access_key,
+            "aws_s3_bucket": settings.aws_s3_bucket,
+            "aws_region": settings.aws_region
         }
     )

@@ -43,6 +43,7 @@ export const API = {
   },
   pathfinding: {
     route: () => `${config.apiBaseUrl}${config.apiPrefix}/pathfinding/route`,
+    validatePoint: () => `${config.apiBaseUrl}${config.apiPrefix}/pathfinding/validate-point`,
   },
   files: (path: string) => `${config.apiBaseUrl}${path}`,
 };

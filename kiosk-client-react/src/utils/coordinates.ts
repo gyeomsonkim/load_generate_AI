@@ -42,21 +42,13 @@ export function denormalizeCoordinates(
 
 /**
  * Calculate map bounds based on image dimensions
+ * Uses actual pixel dimensions for Leaflet CRS.Simple
  */
 export function calculateMapBounds(width: number, height: number): MapBounds {
-  const aspectRatio = width / height;
-
-  if (aspectRatio > 1) {
-    // Landscape
-    return {
-      min: [0, 0],
-      max: [1 / aspectRatio, 1],
-    };
-  } else {
-    // Portrait
-    return {
-      min: [0, 0],
-      max: [1, aspectRatio],
-    };
-  }
+  // Leaflet CRS.Simple expects pixel coordinates
+  // [lat, lng] corresponds to [y, x] in image coordinates
+  return {
+    min: [0, 0],
+    max: [height, width],
+  };
 }

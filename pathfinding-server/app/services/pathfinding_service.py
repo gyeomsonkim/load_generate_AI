@@ -5,6 +5,7 @@ A* 알고리즘과 경로 최적화를 통합하여 실제 길찾기 기능 제�
 import json
 import time
 import hashlib
+import math
 from typing import List, Tuple, Optional, Dict, Any
 from pathlib import Path
 import numpy as np
@@ -325,16 +326,28 @@ class PathfindingService:
         try:
             if preprocessed_data.walkable_grid:
                 # DB에서 직접 로드
+                logger.info(f"Loading grid from database for map: {preprocessed_data.map_id}")
                 return np.array(preprocessed_data.walkable_grid)
 
-            # 파일에서 로드 (Phase 1 호환성)
-            grid_path = self.storage_path / "processed" / preprocessed_data.map_id / "grid.json"
-            if grid_path.exists():
-                with open(grid_path, 'r') as f:
-                    grid_data = json.load(f)
-                    return np.array(grid_data)
+            # 파일에서 로드 - 여러 경로 시도 (CV/ML 모드 호환)
+            base_path = self.storage_path / "processed" / preprocessed_data.map_id
+            possible_paths = [
+                base_path / "grid.json",              # 레거시 루트 경로
+                base_path / "cv" / "grid.json",       # CV 모드 경로
+                base_path / "ml" / "ml_grid.json",    # ML 모드 경로
+            ]
 
+            for grid_path in possible_paths:
+                if grid_path.exists():
+                    logger.info(f"Loading grid from file: {grid_path}")
+                    with open(grid_path, 'r') as f:
+                        grid_data = json.load(f)
+                        return np.array(grid_data)
+
+            # 모든 경로에서 찾지 못한 경우
+            logger.error(f"그리드 파일을 찾을 수 없습니다. 시도한 경로: {[str(p) for p in possible_paths]}")
             return None
+
         except Exception as e:
             logger.error(f"그리드 데이터 로드 실패: {e}")
             return None
@@ -412,3 +425,90 @@ class PathfindingService:
     def _euclidean_distance(self, p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
         """유클리드 거리 계산"""
         return ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
+
+    async def validate_and_adjust_point(
+        self,
+        db: AsyncSession,
+        map_id: str,
+        point: Tuple[float, float]
+    ) -> Dict[str, Any]:
+        """
+        좌표 검증 및 보정
+
+        Args:
+            db: 데이터베이스 세션
+            map_id: 지도 ID
+            point: 검증할 좌표 (정규화된 0-1 범위)
+
+        Returns:
+            검증 결과 딕셔너리
+        """
+        try:
+            # 그리드 데이터 로드
+            preprocessed_data = await self._get_preprocessed_data(db, map_id)
+            if not preprocessed_data:
+                raise ValueError(f"전처리된 데이터를 찾을 수 없습니다: {map_id}")
+
+            grid = await self._load_grid_data(preprocessed_data)
+            if grid is None:
+                raise ValueError(f"그리드 데이터를 로드할 수 없습니다: {map_id}")
+
+            # 정규화된 좌표를 그리드 좌표로 변환
+            height, width = grid.shape
+            from app.core.pathfinding.astar import Point
+
+            point_grid = Point(
+                int(point[0] * width),
+                int(point[1] * height)
+            )
+
+            # 유효성 검사
+            is_valid = (
+                0 <= point_grid.x < width and
+                0 <= point_grid.y < height and
+                grid[point_grid.y, point_grid.x] == 1
+            )
+
+            adjusted_point_grid = point_grid
+            was_adjusted = False
+            adjustment_distance = 0.0
+
+            # 장애물 위치인 경우 가장 가까운 보행 가능 지점 찾기
+            if not is_valid:
+                # A* pathfinder의 _find_nearest_walkable_point 메서드 사용
+                adjusted_point_grid = self.astar._find_nearest_walkable_point(
+                    grid, point_grid
+                )
+
+                if adjusted_point_grid is None:
+                    raise ValueError("주변에 보행 가능한 영역을 찾을 수 없습니다")
+
+                was_adjusted = True
+                # 보정 거리 계산 (픽셀 단위)
+                adjustment_distance = math.sqrt(
+                    (adjusted_point_grid.x - point_grid.x) ** 2 +
+                    (adjusted_point_grid.y - point_grid.y) ** 2
+                )
+
+                logger.info(
+                    f"좌표 보정: {point} -> ({adjusted_point_grid.x}/{width}, {adjusted_point_grid.y}/{height}), "
+                    f"거리: {adjustment_distance:.1f}px"
+                )
+
+            # 그리드 좌표를 정규화된 좌표로 변환
+            adjusted_point = (
+                adjusted_point_grid.x / width,
+                adjusted_point_grid.y / height
+            )
+
+            return {
+                'is_valid': is_valid,
+                'original_point': point,
+                'adjusted_point': adjusted_point,
+                'was_adjusted': was_adjusted,
+                'adjustment_distance': adjustment_distance
+            }
+
+        except Exception as e:
+            logger.error(f"좌표 검증 실패: {e}")
+            raise

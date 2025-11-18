@@ -10,9 +10,10 @@ import logging
 from pathlib import Path
 
 from app.config import settings
-from app.api.routes import maps, pathfinding
+from app.api.routes import maps, pathfinding, auth, dashboard
 from app.models.database import Base
 from app.api.dependencies import engine
+from app.middleware.usage_tracker import ApiUsageTrackerMiddleware
 
 # 로깅 설정
 logging.basicConfig(
@@ -65,6 +66,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API 사용량 추적 미들웨어
+app.add_middleware(ApiUsageTrackerMiddleware)
+
 
 # 정적 파일 서빙 (로컬 스토리지 사용 시)
 if settings.storage_type == "local":
@@ -74,6 +78,8 @@ if settings.storage_type == "local":
 # API 라우터 등록
 app.include_router(maps.router, prefix=settings.api_prefix)
 app.include_router(pathfinding.router, prefix=settings.api_prefix)
+app.include_router(auth.router, prefix=settings.api_prefix)
+app.include_router(dashboard.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

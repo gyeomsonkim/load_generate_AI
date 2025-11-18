@@ -10,7 +10,9 @@ from app.models.schemas import (
     PathfindingRequest,
     PathfindingResponse,
     MultiPathfindingRequest,
-    PathMetadata
+    PathMetadata,
+    ValidatePointRequest,
+    ValidatePointResponse
 )
 from app.models.enums import PathDifficulty
 from app.services.pathfinding_service import PathfindingService
@@ -91,10 +93,14 @@ async def find_route(
         )
 
     except ValueError as e:
+        logger.error(f"입력 검증 오류: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"경로 찾기 오류: {e}")
-        raise HTTPException(status_code=500, detail="경로 찾기 중 오류가 발생했습니다")
+        logger.error(f"경로 찾기 오류: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"경로 찾기 중 오류가 발생했습니다: {str(e)}"
+        )
 
 
 @router.post("/multi-route")
@@ -289,3 +295,49 @@ async def clear_cache(
     except Exception as e:
         logger.error(f"캐시 삭제 오류: {e}")
         raise HTTPException(status_code=500, detail="캐시 삭제 중 오류가 발생했습니다")
+
+
+@router.post("/validate-point", response_model=ValidatePointResponse)
+async def validate_point(
+    request: ValidatePointRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    좌표 검증 및 자동 보정
+
+    사용자가 클릭한 좌표가 장애물 위에 있는지 확인하고,
+    장애물이면 가장 가까운 보행 가능 지점으로 자동 보정합니다.
+
+    **입력:**
+    - map_id: 지도 ID
+    - point: 검증할 좌표 (0-1 정규화)
+
+    **출력:**
+    - is_valid: 원래 좌표가 보행 가능한지
+    - original_point: 원래 좌표
+    - adjusted_point: 보정된 좌표 (필요시)
+    - was_adjusted: 보정 여부
+    - adjustment_distance: 보정 거리 (픽셀)
+    """
+    try:
+        # 좌표 검증 및 보정
+        result = await pathfinding_service.validate_and_adjust_point(
+            db=db,
+            map_id=request.map_id,
+            point=request.point
+        )
+
+        return ValidatePointResponse(
+            is_valid=result['is_valid'],
+            original_point=result['original_point'],
+            adjusted_point=result['adjusted_point'],
+            was_adjusted=result['was_adjusted'],
+            adjustment_distance=result.get('adjustment_distance')
+        )
+
+    except ValueError as e:
+        logger.error(f"좌표 검증 오류: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"좌표 검증 처리 오류: {e}")
+        raise HTTPException(status_code=500, detail="좌표 검증 중 오류가 발생했습니다")

@@ -116,14 +116,22 @@ class AStarPathfinder:
             int(end[1] * height)
         )
 
-        # 시작점과 끝점이 유효한지 확인
+        # 시작점과 끝점이 유효한지 확인 및 자동 보정
         if not self._is_valid_point(grid, start_point):
-            logger.error(f"시작점이 유효하지 않습니다: {start_point}")
-            return None
+            logger.warning(f"시작점이 장애물 위에 있습니다: {start_point}, 가장 가까운 보행 가능 지점을 찾습니다")
+            start_point = self._find_nearest_walkable_point(grid, start_point)
+            if start_point is None:
+                logger.error(f"시작점 근처에 보행 가능한 영역을 찾을 수 없습니다")
+                return None
+            logger.info(f"시작점 보정: {start_point}")
 
         if not self._is_valid_point(grid, end_point):
-            logger.error(f"종료점이 유효하지 않습니다: {end_point}")
-            return None
+            logger.warning(f"종료점이 장애물 위에 있습니다: {end_point}, 가장 가까운 보행 가능 지점을 찾습니다")
+            end_point = self._find_nearest_walkable_point(grid, end_point)
+            if end_point is None:
+                logger.error(f"종료점 근처에 보행 가능한 영역을 찾을 수 없습니다")
+                return None
+            logger.info(f"종료점 보정: {end_point}")
 
         # A* 알고리즘 실행
         path = self._astar_search(grid, start_point, end_point)
@@ -244,6 +252,72 @@ class AStarPathfinder:
         if 0 <= point.x < width and 0 <= point.y < height:
             return grid[point.y, point.x] == 1
         return False
+
+    def _find_nearest_walkable_point(self, grid: np.ndarray, point: Point, max_search_radius: int = 50) -> Optional[Point]:
+        """
+        가장 가까운 보행 가능한 지점 찾기 (BFS 사용)
+
+        Args:
+            grid: 2D 그리드
+            point: 시작 지점 (장애물 위에 있을 수 있음)
+            max_search_radius: 최대 탐색 반경
+
+        Returns:
+            가장 가까운 보행 가능 지점 또는 None
+        """
+        from collections import deque
+
+        height, width = grid.shape
+
+        # 이미 보행 가능한 경우
+        if self._is_valid_point(grid, point):
+            return point
+
+        # BFS로 가장 가까운 보행 가능 지점 찾기
+        visited = set()
+        queue = deque([(point, 0)])  # (point, distance)
+        visited.add((point.x, point.y))
+
+        # 8방향 탐색
+        directions = [
+            (-1, -1), (0, -1), (1, -1),
+            (-1, 0),           (1, 0),
+            (-1, 1),  (0, 1),  (1, 1)
+        ]
+
+        while queue:
+            current, distance = queue.popleft()
+
+            # 최대 탐색 거리 초과
+            if distance > max_search_radius:
+                break
+
+            # 모든 방향 탐색
+            for dx, dy in directions:
+                new_x = current.x + dx
+                new_y = current.y + dy
+                new_point = Point(new_x, new_y)
+
+                # 범위 체크
+                if not (0 <= new_x < width and 0 <= new_y < height):
+                    continue
+
+                # 이미 방문한 경우
+                if (new_x, new_y) in visited:
+                    continue
+
+                visited.add((new_x, new_y))
+
+                # 보행 가능한 지점 발견
+                if grid[new_y, new_x] == 1:
+                    logger.info(f"가장 가까운 보행 가능 지점 발견: {new_point} (거리: {distance + 1})")
+                    return new_point
+
+                # 큐에 추가
+                queue.append((new_point, distance + 1))
+
+        # 탐색 범위 내에서 보행 가능한 지점을 찾지 못함
+        return None
 
     def _calculate_heuristic(self, point1: Point, point2: Point) -> float:
         """

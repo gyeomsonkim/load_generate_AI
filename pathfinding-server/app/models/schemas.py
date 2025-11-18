@@ -94,6 +94,21 @@ class MultiPathfindingRequest(BaseModel):
     options: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
+class ValidatePointRequest(BaseModel):
+    """좌표 검증 및 보정 요청"""
+    map_id: str = Field(..., description="지도 ID")
+    point: Tuple[float, float] = Field(..., description="검증할 좌표 (정규화된 0-1)")
+
+
+class ValidatePointResponse(BaseModel):
+    """좌표 검증 및 보정 응답"""
+    is_valid: bool = Field(..., description="원래 좌표가 보행 가능 여부")
+    original_point: Tuple[float, float] = Field(..., description="원래 좌표")
+    adjusted_point: Tuple[float, float] = Field(..., description="보정된 좌표 (보행 가능 지점)")
+    was_adjusted: bool = Field(..., description="좌표가 보정되었는지 여부")
+    adjustment_distance: Optional[float] = Field(None, description="보정 거리 (픽셀)")
+
+
 # ===== 장애물/편집 관련 스키마 =====
 class ObstacleUpdate(BaseModel):
     """장애물 업데이트"""
@@ -117,3 +132,118 @@ class HealthResponse(BaseModel):
     redis: str
     storage: str
     ml_models_loaded: bool
+
+
+# ===== 인증 관련 스키마 =====
+class ApiKeyVerifyRequest(BaseModel):
+    """API 키 검증 요청"""
+    api_key: str = Field(..., min_length=6, max_length=6, description="6자리 API 키")
+
+
+class ApiKeyInfo(BaseModel):
+    """API 키 정보"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    key: str
+    is_active: bool
+    usage_count: int
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+
+
+class ApiKeyVerifyResponse(BaseModel):
+    """API 키 검증 응답"""
+    valid: bool
+    key_info: Optional[ApiKeyInfo] = None
+
+
+class ApiKeyCreateRequest(BaseModel):
+    """API 키 생성 요청"""
+    name: Optional[str] = Field(None, description="키 이름 (선택사항)")
+
+
+class ApiKeyCreateResponse(BaseModel):
+    """API 키 생성 응답"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    key: str
+    is_active: bool
+    usage_count: int
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+
+
+# ===== Dashboard 관련 스키마 =====
+class UsageStats(BaseModel):
+    """사용량 통계"""
+    total_calls: int
+    calls_today: int
+    calls_this_week: int
+    calls_this_month: int
+    most_used_endpoint: Optional[str] = None
+    average_response_time_ms: float
+    success_rate: float
+
+
+class HourlyUsage(BaseModel):
+    """시간별 사용량"""
+    hour: datetime
+    count: int
+
+
+class DailyUsage(BaseModel):
+    """일별 사용량"""
+    date: str
+    count: int
+
+
+class EndpointUsage(BaseModel):
+    """엔드포인트별 사용량"""
+    endpoint: str
+    count: int
+    average_response_time_ms: float
+
+
+class MapInfo(BaseModel):
+    """지도 정보 (간소화)"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    map_type: str
+    preprocessing_status: str
+    created_at: datetime
+    original_image_url: Optional[str] = None
+    processed_image_url: Optional[str] = None
+    width: int
+    height: int
+    scale_meters_per_pixel: float
+
+
+class UserImageInfo(BaseModel):
+    """사용자 업로드 이미지 정보"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    api_key_id: int
+    map_id: str
+    upload_timestamp: datetime
+    is_deleted: bool
+    map: Optional[MapInfo] = None
+
+
+class DashboardStatsResponse(BaseModel):
+    """Dashboard 통계 응답"""
+    usage: UsageStats
+    hourly_usage: List[HourlyUsage]
+    daily_usage: List[DailyUsage]
+    endpoint_usage: List[EndpointUsage]
+    recent_uploads: List[UserImageInfo]
+
+
+class UsagePeriodResponse(BaseModel):
+    """기간별 사용량 응답"""
+    period: str
+    data: List[DailyUsage]

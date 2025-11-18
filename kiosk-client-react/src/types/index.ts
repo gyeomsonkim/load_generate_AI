@@ -73,6 +73,19 @@ export interface PathfindingResponse {
   processing_time: number;
 }
 
+export interface ValidatePointRequest {
+  map_id: string;
+  point: NormalizedCoordinate;
+}
+
+export interface ValidatePointResponse {
+  is_valid: boolean;
+  original_point: NormalizedCoordinate;
+  adjusted_point: NormalizedCoordinate;
+  was_adjusted: boolean;
+  adjustment_distance: number | null;
+}
+
 // ===== Marker Types =====
 export type MarkerType = 'start' | 'end';
 
@@ -85,6 +98,10 @@ export interface MarkerData {
   type: MarkerType;
   position: LatLngCoordinate;
   normalized: NormalizedCoordinate;
+  // Coordinates adjusted by backend (if different from original click)
+  adjustedPosition?: LatLngCoordinate;
+  adjustedNormalized?: NormalizedCoordinate;
+  wasAdjusted?: boolean;
 }
 
 // ===== Application State =====

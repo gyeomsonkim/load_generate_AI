@@ -7,12 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
 import logging
 import uuid
+import aiofiles
 
 from app.models.schemas import MapUploadRequest, MapResponse, MapPreprocessingRequest, MapPreprocessingResponse
 from app.models.database import Map, PreprocessedMapData
 from app.models.enums import MapStatus
 from app.services.storage_service import StorageService
 from app.core.pathfinding.preprocessor import MapPreprocessor
+from app.services.ml_service import get_ml_service, ProcessingMode
 from app.api.dependencies import get_db, get_storage_service
 from app.config import settings
 
@@ -182,27 +184,88 @@ async def preprocess_map_task(map_id: str, image_path: str, storage: StorageServ
             )
             await db.commit()
 
-            # 전처리기 초기화
-            preprocessor = MapPreprocessor()
-
             # 출력 디렉토리 생성
             output_dir = Path(settings.storage_path) / "processed" / map_id
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            # 전처리 실행
-            result = preprocessor.preprocess_map(image_path, str(output_dir))
+            # S3 모드일 때 파일 다운로드
+            local_image_path = image_path
+            if storage.storage_type == "s3":
+                # S3에서 파일 다운로드
+                image_content = await storage.get_file(image_path)
 
-            # PreprocessedMapData 저장
+                # 로컬 임시 파일로 저장
+                temp_dir = Path(settings.storage_path) / "temp"
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                local_image_path = str(temp_dir / Path(image_path).name)
+
+                async with aiofiles.open(local_image_path, 'wb') as f:
+                    await f.write(image_content)
+
+                logger.info(f"S3 파일 다운로드 완료: {image_path} -> {local_image_path}")
+
+            # ML 서비스를 통한 전처리 실행 (ML + CV 통합)
+            ml_service = get_ml_service()
+            result = await ml_service.preprocess_map(
+                image_path=local_image_path,
+                output_dir=str(output_dir),
+                mode=None,  # 자동 선택
+                user_id=map_id
+            )
+
+            # 결과에서 알고리즘 결정
+            algorithm_used = result.get('method', 'cv')
+            if result.get('processing_mode') == 'hybrid':
+                algorithm_used = f"hybrid_{result.get('selected_method', 'cv')}"
+
+            # S3 모드일 때 전처리 결과를 S3에 업로드
+            s3_paths = {}
+            if storage.storage_type == "s3":
+                processed_files = {
+                    'binary_image': result.get('binary_image'),
+                    'edge_image': result.get('edge_image'),
+                    'walkable_mask': result.get('walkable_mask_path') or result.get('walkable_mask'),
+                    'visualization': result.get('visualization'),
+                    'navigation_grid': result.get('navigation_grid_path')
+                }
+
+                for file_type, file_path in processed_files.items():
+                    if file_path and Path(file_path).exists():
+                        # 파일 읽기
+                        async with aiofiles.open(file_path, 'rb') as f:
+                            file_content = await f.read()
+
+                        # S3에 업로드
+                        s3_key = await storage.save_processed_data(
+                            map_id=map_id,
+                            data_type=file_type,
+                            data=file_content
+                        )
+                        s3_paths[file_type] = s3_key
+                        logger.info(f"Uploaded {file_type} to S3: {s3_key}")
+
+            # PreprocessedMapData 저장 (S3 경로 또는 로컬 경로)
+            # 그리드 데이터 로드 (navigation_grid_path 또는 navigation_grid 키 지원)
+            grid_data = None
+            grid_path = result.get('navigation_grid_path') or result.get('navigation_grid')
+            if grid_path and Path(grid_path).exists():
+                try:
+                    with open(grid_path, 'r') as f:
+                        grid_data = json.load(f)
+                    logger.info(f"Grid data loaded from: {grid_path}")
+                except Exception as e:
+                    logger.error(f"Failed to load grid data from {grid_path}: {e}")
+
             preprocessed_data = PreprocessedMapData(
                 map_id=map_id,
-                binary_image_path=result.get('binary_image'),
-                edge_image_path=result.get('edge_image'),
-                segmented_image_path=result.get('walkable_mask'),
+                binary_image_path=s3_paths.get('binary_image') if s3_paths else result.get('binary_image'),
+                edge_image_path=s3_paths.get('edge_image') if s3_paths else result.get('edge_image'),
+                segmented_image_path=s3_paths.get('walkable_mask') if s3_paths else (result.get('walkable_mask_path') or result.get('walkable_mask')),
                 graph_data=None,  # Phase 2에서 구현
-                walkable_grid=json.load(open(result['navigation_grid'])) if 'navigation_grid' in result else None,
+                walkable_grid=grid_data,
                 entrance_points=result.get('entrance_points'),
                 processing_time=result['processing_time'],
-                algorithm_used="basic_cv"
+                algorithm_used=algorithm_used
             )
 
             # 기존 전처리 데이터 삭제
@@ -216,7 +279,7 @@ async def preprocess_map_task(map_id: str, image_path: str, storage: StorageServ
             await db.execute(
                 update(Map).where(Map.id == map_id).values(
                     preprocessing_status=MapStatus.PROCESSED.value,
-                    processed_image_path=result.get('visualization'),
+                    processed_image_path=s3_paths.get('visualization') if s3_paths else result.get('visualization'),
                     preprocessing_metadata=result,
                     walkable_areas=result.get('walkable_percentage'),
                     obstacles=result.get('obstacles')

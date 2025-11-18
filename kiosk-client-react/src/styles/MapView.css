@@ -32,6 +32,24 @@
   background: #ef4444;
 }
 
+/* Adjusted marker indicator */
+.marker-adjusted {
+  animation: marker-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7), 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes marker-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7), 0 2px 10px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 193, 7, 0), 0 2px 10px rgba(0, 0, 0, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0), 0 2px 10px rgba(0, 0, 0, 0.5);
+  }
+}
+
 /* Touch feedback animation */
 @keyframes touch-ripple {
   from {
